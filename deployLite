@@ -1,0 +1,279 @@
+#!/usr/bin/env php
+
+<?php
+
+class deployLite
+{
+
+    private $config = [];
+    private $pack_name = '';
+    private $log;
+    private $ssh_connect;
+    private $ssh_resources;
+    private $argv;
+    private $help_info = <<<EOF
+\nDeployLite cli help (deployLite [option])
+--------------------------------------
+deploy                :deploy project to queue servers
+show                  :show all packs
+rollback---[packname] :rollback to pack
+config                :show config
+clean                 :clean log and packs\n\n
+EOF;
+
+    public function __construct() {
+
+        if(PHP_SAPI !== 'cli') {
+            echo 'only allow cli request';
+            return false;
+        }
+
+        $this->argv = $_SERVER['argv'];
+        if(empty($this->argv) || empty($this->argv[1]) || $this->argv[1] == 'help') {
+            echo $this->help_info;
+            exit;
+        }else {
+            unset($this->help);
+        }
+        $this->argv = strtolower($this->argv[1]);
+
+        $this->config = json_decode(file_get_contents('./config.json'), true);
+        if(!file_exists('./config.json') || empty($this->config) || !is_array($this->config)) {
+            $this->log('no such config.json');
+            return false;
+        }
+
+        date_default_timezone_set($this->config['timezone'] ? : 'PRC');
+
+        $this->log('------------------------------------------DeployLite script running...');
+
+        $this->init();
+    }
+
+    public function run() {
+
+        $this->argv = str_replace(['', ' ', '   '], '', $this->argv);
+        if(is_numeric(stripos($this->argv, 'rollback'))) {
+            $pack_name = explode('---', $this->argv)[1];
+            $this->argv = 'rollback';
+        }
+
+        switch ($this->argv) {
+
+            case 'deploy': {
+                $this->queue();
+                break;
+            }
+            case 'config': {
+                echo json_encode($this->config);
+                break;
+            }
+            case 'clean': {
+                $this->log("rm -rf {$this->config['client']['package_path']}", true);
+                $this->log("rm -rf {$this->config['client']['log_path']}", true);
+                break;
+            }
+            case 'show': {
+                $packs = scandir($this->config['client']['package_path']);
+                unset($packs[0], $packs[1]);
+                $packs = array_values($packs);
+                asort($packs);
+                echo json_encode($packs);
+                break;
+            }
+            case 'rollback': {
+                $this->log("rollback to {$pack_name}");
+                $this->queue($pack_name);
+                $this->log("rollback finish");
+                break;
+            }
+            default: {
+                $this->log('command not support');
+                break;
+            }
+        }
+    }
+
+    private function init() {
+
+        $this->log(__FUNCTION__.' start');
+
+        if(empty($this->config['client']['project_path'])) {
+            $this->log('client.project_path is null');
+            return false;
+        }
+
+        if(empty($this->config['client']['package_path'])) {
+            $this->log('client.package_path is null');
+            return false;
+        }
+
+        if(empty($this->config['client']['log_path'])) {
+            $this->log('client.log_path is null');
+            return false;
+        }
+
+        if(empty($this->config['server']['final_path'])) {
+            $this->log('server.final_path is null');
+            return false;
+        }
+
+        if(!is_array($this->config['server']['group']) || empty($this->config['server']['group'])) {
+            $this->log('server.group is null');
+            return false;
+        }
+
+        if(!file_exists($this->config['client']['package_path'])) {
+            mkdir($this->config['client']['package_path'], 0755, true);
+        }
+
+        if(!file_exists($this->config['client']['log_path'])) {
+            mkdir($this->config['client']['log_path'], 0755, true);
+        }
+
+        $package_list = scandir($this->config['client']['package_path']);
+        unset($package_list[0], $package_list[1]);
+        $package_list = array_values($package_list);
+        if(count($package_list) > ($this->config['package']['save_count'] - 1)) {
+            for ($key = 0; $key < (count($package_list)-($this->config['package']['save_count']-1)); $key++) {
+                $this->log("rm -rf {$this->config['client']['package_path']}/{$package_list[$key]}", true);
+            }
+        }
+
+        $log_list = scandir($this->config['client']['log_path']);
+        unset($log_list[0], $log_list[1]);
+        $log_list = array_values($log_list);
+        if(count($log_list) > ($this->config['package']['save_count'] - 1)) {
+            for ($key = 0; $key < (count($log_list)-($this->config['package']['save_count']-1)); $key++) {
+                $this->log("rm -rf {$this->config['client']['log_path']}/{$log_list[$key]}", true);
+            }
+        }
+
+        $this->log(__FUNCTION__.' end');
+    }
+
+    private function queue($pack_name = NULL) {
+
+        if(empty($pack_name)) {
+            $this->package();
+        }else {
+            if(!file_exists($this->config['client']['package_path'].'/'.$pack_name.'.zip')) {
+                $this->log("rollback err, {$this->config['client']['package_path']}/{$pack_name}.zip not found");
+                exit;
+            }
+            $this->pack_name = $pack_name;
+        }
+
+        foreach ($this->config['server']['group'] as $server_num => $server_info) {
+
+            $this->log("server-{$server_num}-{$server_info['host']} running task");
+
+            $this->ssh_connect = ssh2_connect($server_info['host'], $server_info['port']);
+            if(!ssh2_auth_password($this->ssh_connect, $server_info['user'], $server_info['pass'])) {
+                $this->log("server-{$server_num}-{$server_info['host']} connect err");
+                continue;
+            }
+            $this->ssh_resources = ssh2_sftp($this->ssh_connect);
+
+            $this->deploy($server_info);
+
+            $this->crontab($server_info);
+
+            ssh2_disconnect($this->ssh_connect);
+
+            $this->log("server-{$server_num}-{$server_info['host']} has done");
+
+            unset(
+                $this->ssh_connect,
+                $this->ssh_resources
+            );
+        }
+    }
+
+    private function package() {
+
+        $this->log(__FUNCTION__.' start');
+
+        if(!file_exists($this->config['client']['project_path'])) {
+            $this->log('Could not find the project directory');
+            exit;
+        }
+        $this->pack_name = date('Ymd').'-'.date('H').'-'.time();
+        $this->log("zip -r {$this->config['client']['package_path']}/{$this->pack_name}.zip {$this->config['client']['project_path']}", true);
+
+        $this->log(__FUNCTION__.' end');
+    }
+
+    private function deploy($server_info) {
+
+        $this->log(__FUNCTION__.' start');
+
+        if(empty($server_info) || !is_array($server_info)) {
+            return false;
+        }
+
+        $project_name = basename($this->config['client']['project_path']);
+        $package_file = realpath($this->config['client']['package_path']).'/'.$this->pack_name.'.zip';
+        $remote_file = 'ssh2.sftp://'.$this->ssh_resources.$this->config['server']['final_path'].'/'.$this->pack_name.'.zip';
+        $this->log("{$package_file} => {$remote_file}");
+        copy($package_file, $remote_file);
+
+        $command = "rm -rf {$project_name} && unzip -q {$this->pack_name}.zip && rm -rf {$this->pack_name}.zip";
+        $this->log($command);
+        ssh2_exec($this->ssh_connect, $command);
+
+        $this->log(__FUNCTION__.' end');
+    }
+
+    private function crontab($server_info) {
+
+        $this->log(__FUNCTION__.' start');
+
+        if(empty($server_info) || !is_array($server_info)) {
+            return false;
+        }
+
+        if(!count($this->config['server']['crontab'])) {
+            $this->log('nothing to do');
+            return false;
+        }
+
+        foreach ($this->config['server']['crontab'] as $crontab_index => $crontab_item) {
+            $command = "echo '{$crontab_item['time']}       {$crontab_item['command']}' > /var/spool/cron/{$server_info['user']}";
+            $this->log('crontab-'.$crontab_index.': '.$command);
+            ssh2_exec($this->ssh_connect, $command);
+        }
+
+        $this->log(__FUNCTION__.' end');
+    }
+
+    private function log($info = '', $command = false) {
+
+        if(empty($info)) {
+            return false;
+        }
+
+        $temp = date('Y-m-d H:i:s') . " - {$info} \n";
+        $this->log .= $temp;
+
+        if(!in_array(@strtolower($this->argv), ['show','config',''])) {
+            echo $temp;
+        }
+        unset($temp);
+
+        if($command) {
+            exec($info);
+        }
+    }
+
+    public function __destruct() {
+
+        $this->log("------------------------------------------DeployLite script end\n\n");
+
+        if($this->pack_name) {
+            @file_put_contents($this->config['client']['log_path'].'/'.$this->pack_name.'.log', $this->log, FILE_APPEND);
+        }
+    }
+}
+
+(new deployLite()) -> run();

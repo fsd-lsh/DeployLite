@@ -1,0 +1,28 @@
+{
+    "timezone": "PRC",
+    "client": {
+        "project_path": "./project",
+        "package_path": "./package",
+        "log_path": "./log"
+    },
+    "server": {
+        "final_path": "/root",
+        "crontab": [
+            {
+                "time": "* * */1 * *",
+                "command": "echo 123"
+            }
+        ],
+        "group": [
+            {
+                "host": "xxx.xxx.xxx.xxx",
+                "port": "22",
+                "user": "root",
+                "pass": ""
+            }
+        ]
+    },
+    "package": {
+        "save_count": 5
+    }
+}
