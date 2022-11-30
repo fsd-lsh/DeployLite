@@ -15,10 +15,16 @@
         ],
         "group": [
             {
-                "host": "xxx.xxx.xxx.xxx",
+                "host": "192.168.52.3",
                 "port": "22",
                 "user": "root",
-                "pass": ""
+                "pass": "wsxc.172327"
+            },
+            {
+                "host": "192.168.52.10",
+                "port": "22",
+                "user": "root",
+                "pass": "wsxc.172327"
             }
         ]
     },

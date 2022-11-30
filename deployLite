@@ -12,7 +12,7 @@ class deployLite
     private $ssh_resources;
     private $argv;
     private $help_info = <<<EOF
-\nDeployLite cli help (deployLite [option])
+\nDeployLite cli help (deployLite [option] [config file path])
 --------------------------------------
 deploy                :deploy project to queue servers
 show                  :show all packs

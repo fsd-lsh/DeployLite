@@ -29,7 +29,7 @@ Features to be developed
     },
     "server": {                         //Server Configuration
         "final_path": "/root",          //Deployment Storage path, It must start with a /
-        "crontab": [
+        "crontab": [                    //crontab
             {
                 "time": "* * */1 * *",
                 "command": "echo 123"

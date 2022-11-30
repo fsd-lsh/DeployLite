@@ -29,7 +29,7 @@
     },
     "server": {                         //服务器配置
         "final_path": "/root",          //部署存储位置，需要以/开头
-        "crontab": [
+        "crontab": [                    //定时任务
             {
                 "time": "* * */1 * *",
                 "command": "echo 'hello'"
