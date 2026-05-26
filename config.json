@@ -7,28 +7,37 @@
     },
     "server": {
         "final_path": "/root",
+        "parallel": false,
+        "crontab_mode": "replace",
         "crontab": [
             {
-                "time": "* * */1 * *",
-                "command": "echo 123"
+                "time": "* * * * *",
+                "command": "php /root/project/k/vampire.php"
             }
         ],
         "group": [
             {
-                "host": "192.168.52.3",
+                "host": "",
                 "port": "22",
                 "user": "root",
-                "pass": "wsxc.172327"
+                "pass": "",
+                "auth_method": "password"
             },
             {
-                "host": "192.168.52.10",
+                "host": "",
                 "port": "22",
                 "user": "root",
-                "pass": "wsxc.172327"
+                "auth_method": "key",
+                "key_path": "~/.ssh/id_rsa",
+                "key_passphrase": ""
             }
         ]
     },
     "package": {
         "save_count": 5
+    },
+    "hooks": {
+        "pre_deploy": [],
+        "post_deploy": []
     }
 }

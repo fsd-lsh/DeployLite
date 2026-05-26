@@ -1,0 +1,25 @@
+# DeployLite ignore file - files matching these patterns won't be packaged
+# Each line is a glob pattern matched against file paths
+# Lines starting with # are comments
+
+# Ignore version control
+.git
+.gitignore
+
+# Ignore IDE files
+.idea
+.DS_Store
+*.swp
+*.swo
+
+# Ignore node modules (if applicable)
+node_modules
+
+# Ignore test files
+*_test.php
+test/
+
+# Ignore log and build artifacts
+*.log
+*.zip
+*.tar.gz
